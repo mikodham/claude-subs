@@ -1,0 +1,10 @@
+{
+  "name": "subs",
+  "version": "0.4.0",
+  "description": "Switch between multiple Claude Code accounts by swapping ~/.claude/.credentials.json — no re-login. Backups live outside the repo at ~/.claude/subs-backups/.",
+  "keywords": ["claude-code", "account-switcher", "credentials", "oauth"],
+  "author": {
+    "name": "mikodham",
+    "email": "dhammikoarya@gmail.com"
+  }
+}

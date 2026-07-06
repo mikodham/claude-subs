@@ -1,0 +1,6 @@
+# Never commit captured credentials, if a backup dir is ever placed here.
+subs-backups/
+*.credentials.json
+.credentials.json
+__pycache__/
+*.pyc

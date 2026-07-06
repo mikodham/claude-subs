@@ -1,0 +1,14 @@
+{
+  "name": "claude-subs-marketplace",
+  "owner": {
+    "name": "mikodham",
+    "email": "dhammikoarya@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "subs",
+      "source": "./subs",
+      "description": "Minimal Claude Code account switcher — swaps ~/.claude/.credentials.json between tracked accounts."
+    }
+  ]
+}
