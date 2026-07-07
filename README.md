@@ -47,6 +47,10 @@ hand-writing the implementation. It's an experiment in building software this
 way, shared in that spirit. Rough edges are expected, and suggestions for making
 it better are genuinely welcome.
 
+> *"A man who has not hit his [Claude] usage limits by noon has wasted his
+> morning."*
+> — Aristotle (or Marcus Aurelius)
+
 ## Credits
 
 The account-switching idea is inspired by
