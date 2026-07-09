@@ -19,6 +19,7 @@ Common flags: --json, --backup-dir DIR, --identity/--no-identity
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import os
 import re
@@ -38,6 +39,10 @@ except ImportError:  # pragma: no cover - Windows fallback
     _HAVE_FCNTL = False
 
 REGISTRY_VERSION = 1
+
+# macOS: Claude Code stores the credential blob in the login Keychain as a
+# generic password under this service name (overridable for testing).
+KEYCHAIN_SERVICE = os.environ.get("SUBS_KEYCHAIN_SERVICE") or "Claude Code-credentials"
 
 
 # --------------------------------------------------------------------------- #
@@ -136,15 +141,126 @@ def slugify(label: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Credential backend — file (Linux/WSL) vs macOS login Keychain
+# --------------------------------------------------------------------------- #
+def _is_macos() -> bool:
+    return sys.platform == "darwin"
+
+
+def keychain_present() -> bool:
+    """True if the Claude Code credential item exists in the login Keychain."""
+    try:
+        r = subprocess.run(
+            ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE],
+            capture_output=True, text=True,
+        )
+    except OSError:
+        return False
+    return r.returncode == 0
+
+
+def credential_backend() -> str:
+    """Where the LIVE credential blob lives: 'file' or 'keychain'.
+
+    macOS keeps it in the login Keychain (no ~/.claude/.credentials.json);
+    everything else uses the file. Override with
+    SUBS_CREDENTIAL_BACKEND=file|keychain (anything else = auto).
+    """
+    override = os.environ.get("SUBS_CREDENTIAL_BACKEND", "").strip().lower()
+    if override in ("file", "keychain"):
+        return override
+    if _is_macos() and shutil.which("security"):
+        # Keychain is authoritative on macOS; fall back to a real file only if
+        # one exists and the Keychain has nothing.
+        if keychain_present() or not credentials_path().exists():
+            return "keychain"
+        return "file"
+    return "file"
+
+
+def keychain_account() -> str:
+    """The `acct` of the existing Claude item, else the current macOS user
+    (matches what Claude Code uses so it reads back the same item)."""
+    try:
+        r = subprocess.run(
+            ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0:
+            m = re.search(r'"acct"<blob>="((?:[^"\\]|\\.)*)"', r.stdout)
+            if m:
+                return m.group(1)
+    except OSError:
+        pass
+    try:
+        return getpass.getuser()
+    except Exception:
+        return os.environ.get("USER") or "user"
+
+
+def keychain_read() -> dict | None:
+    """Read + parse the credential JSON from the login Keychain, or None."""
+    try:
+        r = subprocess.run(
+            ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+            capture_output=True, text=True,
+        )
+    except OSError as exc:  # `security` missing (non-macOS) — treat as absent
+        raise SubsError("keychain_unavailable", f"Could not run `security`: {exc}") from exc
+    if r.returncode != 0:
+        return None  # no such item
+    raw = r.stdout.rstrip("\n")  # `security -w` appends a newline
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SubsError(
+            "corrupt_keychain",
+            f"Keychain item {KEYCHAIN_SERVICE!r} is not valid JSON: {exc}",
+        ) from exc
+
+
+def keychain_write(creds: dict) -> None:
+    """Write the credential JSON into the login Keychain (create or update).
+
+    `add-generic-password -U` atomically replaces the item's data. The secret is
+    passed as an argv, so it is briefly visible in `ps` — the `security` CLI has
+    no stdin password mode. See design doc's security section.
+    """
+    acct = keychain_account()
+    blob = json.dumps(creds, separators=(",", ":"))
+    try:
+        r = subprocess.run(
+            ["security", "add-generic-password", "-U",
+             "-a", acct, "-s", KEYCHAIN_SERVICE, "-w", blob],
+            capture_output=True, text=True,
+        )
+    except OSError as exc:
+        raise SubsError("keychain_write_failed", f"Could not run `security`: {exc}") from exc
+    if r.returncode != 0:
+        raise SubsError(
+            "keychain_write_failed",
+            f"`security add-generic-password` failed: {r.stderr.strip() or r.stdout.strip()}",
+        )
+
+
+# --------------------------------------------------------------------------- #
 # Live credential / identity access
 # --------------------------------------------------------------------------- #
 def read_live_credentials() -> dict | None:
-    """The verbatim contents of ~/.claude/.credentials.json, or None."""
+    """The live Claude Code credential blob — from the Keychain on macOS,
+    else from ~/.claude/.credentials.json."""
+    if credential_backend() == "keychain":
+        return keychain_read()
     return read_json(credentials_path())
 
 
 def write_live_credentials(creds: dict) -> None:
-    atomic_write_json(credentials_path(), creds, mode=0o600)
+    if credential_backend() == "keychain":
+        keychain_write(creds)
+    else:
+        atomic_write_json(credentials_path(), creds, mode=0o600)
 
 
 def read_live_oauth_account() -> dict | None:
@@ -346,10 +462,13 @@ def cmd_login(args) -> dict:
     else:
         creds = read_live_credentials()
         if not creds:
+            where = ("the login Keychain (item 'Claude Code-credentials')"
+                     if credential_backend() == "keychain"
+                     else "~/.claude/.credentials.json")
             raise SubsError(
                 "not_logged_in",
-                "No ~/.claude/.credentials.json found. Run `/login` (or `claude login`) "
-                "first, then re-run login to track this account.",
+                f"No live Claude Code credentials found in {where}. Run `/login` "
+                "(or `claude login`) first, then re-run login to track this account.",
             )
         oauth_account = read_live_oauth_account()
         set_active = True

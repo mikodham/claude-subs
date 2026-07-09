@@ -64,8 +64,35 @@ claude --plugin-dir ./subs
 
 - Registry + per-account backups: `~/.claude/subs-backups/` (override with
   `--backup-dir` or `$SUBS_BACKUP_DIR`).
-- Live credentials it swaps: `~/.claude/.credentials.json` (honors
-  `$CLAUDE_CONFIG_DIR`).
+- Live credentials it swaps:
+  - **Linux / WSL:** `~/.claude/.credentials.json` (honors `$CLAUDE_CONFIG_DIR`).
+  - **macOS:** the **login Keychain** — a generic-password item named
+    `Claude Code-credentials`. macOS Claude Code keeps the credential there, not
+    in a file, so `subs` reads/writes it via `security(1)`. Everything else
+    (backups, registry, the `~/.claude.json` identity block) is identical to
+    Linux. See "macOS" below.
+
+## macOS
+
+On macOS, Claude Code does **not** keep `~/.claude/.credentials.json` — the
+credential blob lives in the **login Keychain** (item `Claude Code-credentials`).
+`subs` detects this automatically and swaps the Keychain item instead of a file;
+no configuration needed. `python3` and the built-in `security` tool (ships with
+macOS) are all it requires.
+
+- **Backend selection** is automatic: Keychain on macOS, file elsewhere. Force it
+  with `SUBS_CREDENTIAL_BACKEND=keychain|file` if you run a non-standard setup
+  (e.g. a file-based login on a headless Mac).
+- **One-time access prompt:** the first time Claude Code reads the item after
+  `subs` rewrites it, macOS may show a Keychain prompt — choose **Always Allow**.
+- **Restart to take effect:** as on every platform, a running Claude Code process
+  has the old token cached; the swap is picked up on the next start.
+- **`security` & `ps`:** writing the Keychain passes the token as a command
+  argument (the `security` CLI has no stdin password mode), so it is briefly
+  visible in the local process table — the same token is already plaintext in the
+  Keychain and in `subs` backups. Local-only, sub-second, and documented.
+- **Terminal integration works on macOS bash 3.2** (the default `/bin/bash`) and
+  zsh — `source .../subs-init.sh` and the `subs` picker/completion are portable.
 
 ## Terminal use (instant — no model turn)
 

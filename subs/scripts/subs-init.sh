@@ -2,7 +2,7 @@
 #
 # Add this ONE line to your ~/.bashrc (or ~/.zshrc):
 #
-#     source /path/to/subsc_switch/subs/scripts/subs-init.sh
+#     source /path/to/claude-subs/subs/scripts/subs-init.sh
 #
 # Then, in any terminal:
 #     subs                       # OPEN the interactive fuzzy-search picker (like a GUI)
@@ -62,11 +62,14 @@ try:
 except Exception:
     pass
 ' 2>/dev/null)"
-      lc_cur="${cur,,}"
+      # Portable lowercase (macOS ships bash 3.2, which lacks ${var,,}).
+      lc_cur="$(printf '%s' "$cur" | tr '[:upper:]' '[:lower:]')"
       COMPREPLY=()
       while IFS= read -r w; do
         [ -z "$w" ] && continue
-        if [ -z "$cur" ] || [[ "${w,,}" == *"$lc_cur"* ]]; then
+        local lc_w
+        lc_w="$(printf '%s' "$w" | tr '[:upper:]' '[:lower:]')"
+        if [ -z "$cur" ] || [[ "$lc_w" == *"$lc_cur"* ]]; then
           COMPREPLY+=( "$w" )
         fi
       done <<< "$opts"

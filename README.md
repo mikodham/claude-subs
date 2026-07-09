@@ -32,10 +32,11 @@ Then track your logins and switch between them — full usage is in
 
 ## What it does, in one line
 
-Claude Code keeps one active login at a fixed path (`~/.claude/.credentials.json`
-+ the macOS Keychain). `subs` keeps per-account backups of that blob and swaps
-them in and out — the restored blob already holds valid tokens, so Claude Code
-just resumes. No re-login.
+Claude Code keeps one active login in a fixed spot — `~/.claude/.credentials.json`
+on Linux/WSL, the **login Keychain** on macOS. `subs` keeps per-account backups
+of that blob and swaps them in and out (picking the right store per platform) —
+the restored blob already holds valid tokens, so Claude Code just resumes. No
+re-login. Works on Linux, WSL, and macOS.
 
 ## About this project
 
